@@ -1,0 +1,56 @@
+[
+  {
+    "company": "ООО «ПримерБьюти»",
+    "brand": "BeautyLine",
+    "product_name": "Чистый Коллаген Premium",
+    "country": "Россия",
+    "declared_ingredients": "Гидролизат коллагена (рыбный), витамин C (аскорбиновая кислота), гиалуроновая кислота, ароматизатор «манго».",
+    "marketing_claims": [
+      "100% чистый коллаген для вашей кожи",
+      "Восстанавливает собственный коллаген напрямую",
+      "Нативный морской коллаген высочайшего качества"
+    ],
+    "url": "https://example.com/beautyline-premium",
+    "contact_email": "info@example-beautyline.ru"
+  },
+  {
+    "company": "GreenLifeNutra LLC",
+    "brand": "VeganGlow",
+    "product_name": "Plant-Based Collagen Powder",
+    "country": "USA",
+    "declared_ingredients": "Glycine, L-proline, L-lysine HCl, vitamin C (ascorbic acid), bamboo silica, amla extract.",
+    "marketing_claims": [
+      "100% vegan collagen",
+      "Plant-derived collagen for healthier skin, hair, and nails",
+      "Clinically proven to rebuild your collagen"
+    ],
+    "url": "https://example.com/vegan-collagen",
+    "contact_email": "support@greenlifenutra.example"
+  },
+  {
+    "company": "АО «КорректФарм»",
+    "brand": "PeptidePro",
+    "product_name": "Коллагеновые пептиды I и III типов",
+    "country": "Россия",
+    "declared_ingredients": "Гидролизат коллагена I и III типов (бычий, средняя молекулярная масса 2000 Да), витамин C 80 мг.",
+    "marketing_claims": [
+      "Содержит гидролизат коллагена I и III типов",
+      "Средняя молекулярная масса пептидов 2000 Да для высокой биодоступности",
+      "Способствует поддержанию синтеза коллагена при одновременном приёме витамина C"
+    ],
+    "url": "https://example.com/peptide-pro",
+    "contact_email": "info@correctpharm.example"
+  },
+  {
+    "company": "ООО «ЖелатинМаркет»",
+    "brand": "PureBone",
+    "product_name": "Нативный коллаген из костного бульона",
+    "country": "Россия",
+    "declared_ingredients": "Желатин пищевой (бычий), экстракт шиповника.",
+    "marketing_claims": [
+      "Нативный коллаген в чистом виде",
+      "Тройная спираль сохранена благодаря бережной технологии"
+    ],
+    "url": "https://example.com/purebone"
+  }
+]
