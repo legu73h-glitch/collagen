@@ -9,7 +9,7 @@ from pathlib import Path
 from anthropic import Anthropic
 
 from .models import Artifact, DiscoveryPackage, Idea
-from .nodes import DEFAULT_MODEL, NodeRunner, ProgressCallback
+from .nodes import DEFAULT_MAX_TOKENS, DEFAULT_MODEL, NodeRunner, ProgressCallback
 from .pipeline import NodeSpec, resolve_nodes, validate_pipeline
 from .skills import SkillLibrary, load_skill_library
 
@@ -32,7 +32,7 @@ class DiscoveryAgent:
         model: str = DEFAULT_MODEL,
         out_dir: str | Path = "discovery",
         enable_web_search: bool = True,
-        max_tokens: int = 4096,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
     ) -> None:
         validate_pipeline()
         self.client = client or Anthropic()

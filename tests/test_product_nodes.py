@@ -129,6 +129,76 @@ def test_web_search_tool_attached_only_to_market():
     assert "tools" not in client.messages.calls[1]
 
 
+def test_used_web_search_true_only_when_model_searches():
+    # Model actually invoked the tool: response carries a server_tool_use block.
+    searched = SimpleNamespace(
+        content=[_tool_block("web_search"), _text_block("отчёт с поиском")],
+        stop_reason="end_turn",
+    )
+    not_searched = _fake_response(_text_block("отчёт без поиска"))
+
+    class _Msgs:
+        def __init__(self, resp):
+            self.resp = resp
+
+        def create(self, **kwargs):
+            return self.resp
+
+    runner_yes = NodeRunner(client=SimpleNamespace(messages=_Msgs(searched)))
+    art_yes = runner_yes.run(
+        node_for_slug("market-research"), _idea(), DiscoveryPackage(idea=_idea())
+    )
+    assert art_yes.used_web_search is True
+
+    runner_no = NodeRunner(client=SimpleNamespace(messages=_Msgs(not_searched)))
+    art_no = runner_no.run(
+        node_for_slug("market-research"), _idea(), DiscoveryPackage(idea=_idea())
+    )
+    # Tool was offered but never used -> must not over-report.
+    assert art_no.used_web_search is False
+
+
+def test_pause_turn_is_resumed():
+    class _Pauser:
+        def __init__(self):
+            self.calls = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                return SimpleNamespace(
+                    content=[_tool_block("web_search")], stop_reason="pause_turn"
+                )
+            return _fake_response(_text_block("финальный отчёт"))
+
+    client = SimpleNamespace(messages=_Pauser())
+    runner = NodeRunner(client=client)
+    art = runner.run(
+        node_for_slug("market-research"), _idea(), DiscoveryPackage(idea=_idea())
+    )
+    # Paused turn was resumed by re-sending the assistant content.
+    assert len(client.messages.calls) == 2
+    second_messages = client.messages.calls[1]["messages"]
+    assert second_messages[-1]["role"] == "assistant"
+    assert art.content == "финальный отчёт"
+    # Web search happened in the first (paused) round -> still reported.
+    assert art.used_web_search is True
+
+
+def test_max_tokens_truncation_raises():
+    truncated = SimpleNamespace(
+        content=[_text_block("частичный ответ…")], stop_reason="max_tokens"
+    )
+
+    class _Msgs:
+        def create(self, **kwargs):
+            return truncated
+
+    runner = NodeRunner(client=SimpleNamespace(messages=_Msgs()))
+    with pytest.raises(RuntimeError, match="max_tokens"):
+        runner.run(node_for_slug("brief-writing"), _idea(), DiscoveryPackage(idea=_idea()))
+
+
 def test_web_search_disabled_attaches_no_tools():
     client = _FakeClient(["market"])
     runner = NodeRunner(client=client, enable_web_search=False)

@@ -51,6 +51,11 @@ def _load_idea(args: argparse.Namespace) -> Idea:
                 console.print("[red]Файл идеи пуст.[/red]")
                 sys.exit(2)
             data = data[0]
+        if not isinstance(data, dict):
+            console.print(
+                f"[red]Ожидался объект идеи в JSON, получено:[/red] {type(data).__name__}."
+            )
+            sys.exit(2)
         try:
             return Idea(**data)
         except ValidationError as exc:
