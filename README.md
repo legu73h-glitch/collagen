@@ -23,6 +23,10 @@
 Полные определения, диапазоны молекулярных масс, списки синонимов и научные источники
 лежат в [`data/collagen_knowledge_base.json`](data/collagen_knowledge_base.json).
 
+> 📦 В репозитории **два независимых ИИ-агента**: Collagen Verification Agent (описан ниже)
+> и **[ИИ-агент продакта — discovery-конвейер](#ии-агент-продакта--discovery-конвейер)**,
+> который из одной идеи продукта собирает пакет из 7 discovery-артефактов.
+
 ## Архитектура
 
 ```
@@ -164,3 +168,172 @@ pytest tests/ -v
   отправкой перечитайте и при необходимости согласуйте с юристом.
 - Severity определяется моделью на основании KB; при спорных случаях проверяйте
   `discrepancies[].evidence_quote` вручную.
+
+---
+
+# ИИ-агент продакта — discovery-конвейер
+
+Из **одной идеи продукта** — пакет из семи discovery-артефактов. Агент прогоняет идею через
+конвейер из семи нод; каждая нода — это отдельный продуктовый скилл ([`skills/`](skills/)),
+чья инструкция `SKILL.md` подаётся модели как системный промпт. Артефакты передаются по
+цепочке зависимостей, и на выходе получается собранный «пакет discovery».
+
+Скиллы взяты из набора **Product Skills** (Academy of Yandex AI Studio) и лежат в
+[`skills/`](skills/) вместе с исходными [`SOURCE_README.md`](skills/SOURCE_README.md) и
+[`SOURCE_WORKFLOW.md`](skills/SOURCE_WORKFLOW.md).
+
+## Ноды конвейера
+
+| # | Скилл (нода) | Требует | На выходе | Инструмент |
+|---|---|---|---|---|
+| 1 | `brief-writing` | idea | `brief` — бриф | — |
+| 2 | `market-research` | brief | `market` — рыночный срез | 🌐 web search |
+| 3 | `persona-generation` | brief | `personas` — персоны | — |
+| 4 | `lean-canvas` | brief (+market, +personas) | `lean_canvas` — Lean Canvas | — |
+| 5 | `user-story-mapping` | brief (+personas) | `story_map` — User Story Map | — |
+| 6 | `wireframe-spec` | story_map | `wireframes` — вайрфреймы | — |
+| 7 | `persona-interview` | personas, brief | `interview_report` — отчёт custdev | — |
+
+Порядок исполнения — валидная топологическая сортировка зависимостей: каждая нода получает
+на вход только те артефакты, которые уже произведены ранее.
+
+```
+idea
+  └─(1 brief-writing)──────────────▶ brief
+         ├─(2 market-research)🌐───▶ market ─────┐
+         ├─(3 persona-generation)──▶ personas ───┤
+         ├─(4 lean-canvas)◀──────── brief + market + personas
+         ├─(5 user-story-mapping)◀─ brief + personas
+         │        └─(6 wireframe-spec)──────────▶ wireframes
+         └─(7 persona-interview)◀── personas + brief ──▶ interview_report
+```
+
+## Архитектура
+
+```
+┌──────────────┐    ┌──────────────────┐    ┌─────────────────────┐
+│ Idea (JSON)  │──▶ │ DiscoveryAgent   │──▶ │ DiscoveryPackage    │
+│ summary +    │    │ resolve DAG →    │    │ 7 артефактов (.md)  │
+│ constraints  │    │ NodeRunner×N     │    │ + discovery_package │
+└──────────────┘    └────────┬─────────┘    └─────────────────────┘
+                             │ на каждую ноду
+                             ▼
+                    ┌────────────────────┐
+                    │ skills/<slug>/     │  SKILL.md → system prompt (cached)
+                    │ Claude + web_search│  upstream-артефакты → user message
+                    └────────────────────┘
+```
+
+Компоненты:
+
+- `product_agent/skills.py` — загрузчик скиллов: парсит YAML-frontmatter и тело `SKILL.md`.
+- `product_agent/pipeline.py` — определение DAG (`PIPELINE`), топо-валидация и разрешение
+  подмножеств с автодобором обязательных зависимостей.
+- `product_agent/nodes.py` — `NodeRunner`: собирает системный промпт (скилл, кэшируется) и
+  пользовательское сообщение (идея + upstream-артефакты), вызывает Claude, при необходимости
+  подключает серверный `web_search` с graceful-фолбэком.
+- `product_agent/agent.py` — `DiscoveryAgent`: оркестрация конвейера и сохранение пакета.
+- `product_agent/cli.py` — CLI на `rich`: `run` / `skills` / `graph`.
+
+## Установка
+
+Та же, что и для основного агента (см. выше): `pip install -r requirements.txt`, ключ
+`ANTHROPIC_API_KEY` в `.env`. Модель по умолчанию — `claude-opus-4-7`, переопределяется через
+`PRODUCT_AGENT_MODEL`.
+
+## Использование
+
+### Посмотреть конвейер (API-ключ не нужен):
+
+```bash
+python -m product_agent graph     # граф и порядок нод
+python -m product_agent skills     # скиллы, их входы/выходы и инструменты
+```
+
+### Прогнать идею через весь конвейер:
+
+```bash
+python -m product_agent run --idea data/example_ideas.json --out discovery/
+```
+
+Идею можно задать и одной строкой:
+
+```bash
+python -m product_agent run \
+  --summary "Приложение для обмена сменами между сотрудниками" \
+  --name ShiftSwap --constraint "бюджет $40k" --constraint "3 месяца"
+```
+
+### Минимальный конвейер (3 ноды) и подмножества:
+
+```bash
+python -m product_agent run --idea idea.json --minimal          # brief → story_map → wireframes
+python -m product_agent run --idea idea.json --only lean-canvas  # добьёт обязательный brief сам
+python -m product_agent run --idea idea.json --no-web-search     # без веб-поиска на market
+```
+
+Формат идеи (`data/example_ideas.json` — массив таких объектов):
+
+```json
+{
+  "name": "ShiftSwap",
+  "summary": "Приложение, которое помогает сотрудникам меняться сменами без менеджера.",
+  "audience": "Линейные сотрудники и сменные менеджеры",
+  "constraints": ["MVP-бюджет до $40k", "Запуск за 3 месяца"],
+  "notes": "Ключевая гипотеза — менеджеры тратят часы на закрытие больничных."
+}
+```
+
+### Использование из Python:
+
+```python
+from product_agent.agent import DiscoveryAgent
+from product_agent.models import Idea
+
+agent = DiscoveryAgent(out_dir="discovery")
+result = agent.run(Idea(
+    summary="Приложение для обмена сменами между сотрудниками",
+    name="ShiftSwap",
+    constraints=["бюджет $40k", "3 месяца"],
+))
+
+print(result.order)                          # порядок исполненных нод
+print(result.package.get("brief").content)   # markdown-бриф
+print(result.package.as_markdown())          # весь пакет одним документом
+```
+
+## Выходные артефакты
+
+После `agent.run()` в каталоге `discovery/<timestamp>_<slug>/` появляются:
+
+- `01_brief.md … 07_interview_report.md` — каждый артефакт отдельным файлом (в порядке нод).
+- `discovery_package.md` — сводный документ: идея + все артефакты.
+- `package.json` — структурированный пакет (идея + артефакты с метаданными).
+
+## Веб-поиск
+
+Нода `market-research` подключает серверный инструмент Anthropic `web_search_20250305`. Если
+инструмент недоступен для аккаунта, нода автоматически повторяет вызов без него, а скилл
+помечает отчёт как «без верификации источниками» 🔴. Отключить принудительно: `--no-web-search`.
+
+## Тесты
+
+```bash
+pytest tests/ -v
+```
+
+Тесты агента-продакта (офлайн, без реальных API-вызовов) покрывают:
+- валидность DAG и топологического порядка, разрешение `--minimal` и `--only` с автодобором
+  обязательных зависимостей;
+- загрузку всех семи скиллов и согласованность их frontmatter с конвейером;
+- сборку системного/пользовательского сообщений, кэш скилла, подключение `web_search` только
+  к `market` и graceful-фолбэк, сшивку артефактов по цепочке;
+- сериализацию моделей и формат итогового пакета.
+
+## Ограничения
+
+- Артефакты — это **черновики гипотез** discovery, а не факты. Персоны, рынок и канвас
+  требуют проверки на реальных пользователях и данных.
+- Симулированное интервью (`persona-interview`) — игра модели за персону, не голос рынка.
+- Агент работает автономно (без вопросов): пробелы во входе он закрывает обоснованными
+  допущениями с меткой `[assumption]` — перечитывайте их перед использованием.
